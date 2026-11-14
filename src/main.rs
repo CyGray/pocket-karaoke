@@ -1,21 +1,17 @@
-#[cfg(any(windows, test))]
-mod audio;
-#[cfg(any(windows, test))]
-mod protocol;
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 #[cfg(windows)]
-mod desktop;
+mod gui;
 
 #[cfg(windows)]
 fn main() {
-    if let Err(error) = desktop::run() {
-        eprintln!("Error: {error}");
+    if let Err(error) = gui::run() {
+        eprintln!("Pocket Karaoke UI error: {error}");
         std::process::exit(1);
     }
 }
 
 #[cfg(not(windows))]
 fn main() {
-    eprintln!("The audio receiver currently targets Windows. Build on Windows, or download the Windows release from GitHub.");
-    std::process::exit(1);
+    eprintln!("Pocket Karaoke's Slint UI runs on Windows. Use the GitHub release EXE.");
 }

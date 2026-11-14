@@ -1,15 +1,20 @@
 [package]
 name = "pocket-karaoke"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Ultra-lightweight Android microphone receiver for Windows karaoke"
+description = "Lightweight Android microphone receiver and Slint karaoke mixer for Windows"
 license = "MIT"
 repository = "https://github.com/CyGray/pocket-karaoke"
-rust-version = "1.82"
+rust-version = "1.88"
+build = "build.rs"
 
 [target.'cfg(windows)'.dependencies]
 getrandom = "0.2"
 cpal = { version = "0.16", default-features = false }
+slint = { version = "=1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "compat-1-18"] }
+
+[build-dependencies]
+slint-build = { version = "=1.18.1", default-features = false, features = ["compat-1-18"] }
 
 [profile.release]
 opt-level = "s"

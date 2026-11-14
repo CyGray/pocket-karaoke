@@ -1,131 +1,100 @@
 # Pocket Karaoke 🎤
 
-**Turn an Android phone into a wireless or USB karaoke microphone for your Windows laptop.**
+**Turn an Android phone into a low-overhead karaoke microphone for a Windows laptop — over USB or local Wi-Fi.**
 
-![CI](https://github.com/CyGray/pocket-karaoke/actions/workflows/build.yml/badge.svg)
+Native **Slint desktop UI + Rust/WASAPI audio receiver**, plus a very small **Android microphone APK**. YouTube plays normally in your browser; Windows mixes it with your microphone through your 3.5 mm speakers. No Electron, WebView, virtual audio driver, subscription, or cloud.
 
-A tiny **native Rust** desktop executable plays the phone's microphone through your Windows default audio device. YouTube plays in Chrome as usual; **Windows' shared audio mixer combines the song and your voice** through your 3.5 mm speakers.
+[![Build and test](https://github.com/CyGray/pocket-karaoke/actions/workflows/build.yml/badge.svg)](https://github.com/CyGray/pocket-karaoke/actions/workflows/build.yml)
 
-No Electron, webview, Voicemeeter, DroidCam, FFmpeg, browser server, accounts, advertising, or cloud services.
+[**Download Windows GUI, CLI & Android APK**](https://github.com/CyGray/pocket-karaoke/releases/latest)
 
-## Downloads
+[![Made with Slint](https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png)](https://slint.dev)
 
-[**Download the Windows EXE and Android APK**](https://github.com/CyGray/pocket-karaoke/releases/latest)
+## Windows GUI
 
-The Windows program is portable. The Android app uses native Java/Android APIs, with no extra dependencies. Windows and Android builds also appear as artifacts under [GitHub Actions](https://github.com/CyGray/pocket-karaoke/actions/workflows/build.yml).
+Double-click **pocket-karaoke.exe**. The new Slint interface provides:
+- USB / Wi-Fi mode, fresh six-digit pairing PIN, and receiver start/stop.
+- Live Android microphone connected/disconnected status.
+- Microphone gain (0–200%, including mute) and a configurable 20–100 ms jitter buffer.
+- Windows default speaker device display and a YouTube karaoke shortcut.
+- A native, CPU-only software renderer with no embedded browser or heavyweight UI framework.
 
-## 1. Get the audio working over Wi-Fi
+The [UI source is editable in Slint](ui/app.slint); its Rust event handlers are in [src/gui.rs](src/gui.rs).
 
-1. Plug speakers into your laptop's **3.5 mm jack**. In Windows Sound settings, select those speakers as the **default output** (the same device Chrome uses).
-2. Connect phone and laptop to the **same trusted, private Wi-Fi** network.
-3. On your laptop, open a terminal in the folder containing the downloaded EXE and run:
-   ```powershell
-.\pocket-karaoke.exe --lan
-```
-4. If Windows Firewall asks, allow **Private networks only**. Do **not** open your router's ports to the internet.
-5. In a Windows terminal run `ipconfig` and find your laptop's **IPv4 Address**, typically `192.168.1.x` or `192.168.0.x`.
-6. Install/open the Android APK, grant microphone permission, and enter:
-   - **Host**: the laptop's IPv4 address
-   - **Port**: `8765`
-   - **PIN**: the fresh six-digit number printed by the EXE
-7. Tap **Connect microphone**. Open YouTube karaoke in your laptop browser, adjust Chrome's volume normally, and sing.
+### USB setup — recommended
 
-The phone app keeps the screen awake while you're connected and stops the microphone when you leave the app.
+1. Plug your 3.5 mm speakers into the Windows laptop and select them as default output.
+2. Enable USB debugging on your Android phone and connect it by cable. Install [ADB platform-tools](https://developer.android.com/tools/releases/platform-tools).
+3. Open **pocket-karaoke.exe**. Choose **USB (ADB)**, then **Start microphone receiver**.
+4. In a Windows terminal run:
 
-## 2. USB connection (recommended for steadier audio)
-
-USB avoids Wi-Fi congestion. It uses Android Debug Bridge (ADB) reverse port forwarding; it is **not** a USB audio device.
-
-1. Enable Android **Developer options → USB debugging**, and connect your phone by USB.
-2. Install [Android platform-tools (ADB)](https://developer.android.com/tools/releases/platform-tools) on Windows.
-3. Start the Windows receiver **without** `--lan`:
-   ```powershell
-.\pocket-karaoke.exe
-```
-4. In another terminal run:
-   ```powershell
+~~~powershell
 adb devices
 adb reverse tcp:8765 tcp:8765
-```
-   Accept the USB debugging authorization dialog on the phone.
-5. In the phone app enter **Host `127.0.0.1`**, **Port `8765`**, and the receiver's PIN, then tap Connect.
+~~~
 
-If you reconnect the cable, rerun `adb reverse`.
+5. Install/open **pocket-karaoke-android.apk**, grant microphone permission, and enter **127.0.0.1**, **8765**, and the six-digit pairing PIN shown in the UI.
+6. Tap **Connect microphone**. Start any karaoke instrumental on YouTube on the laptop.
 
-## Controls and audio
+USB uses **ADB reverse TCP**, not the USB Audio device protocol. Repeat the ADB command if you disconnect/reconnect the cable.
 
-Run ```powershell
-.\pocket-karaoke.exe --help
-.\pocket-karaoke.exe --list-devices
-.\pocket-karaoke.exe --gain 0.8 --buffer-ms 60 --lan
-```
+### Wi-Fi setup
 
-While the receiver is running, type `gain 0.7`, `mute`, `unmute`, `status`, or `quit` in its console.
+1. Put your laptop and phone on the **same trusted private Wi-Fi**.
+2. Open **pocket-karaoke.exe**, select **Wi-Fi**, and press **Start microphone receiver**.
+3. Allow the app through Windows Firewall on **Private networks only**.
+4. In the Android app, enter the laptop's IPv4 address (the GUI attempts to show it; otherwise use **ipconfig**), port **8765**, and the six-digit PIN.
+5. Tap **Connect microphone** and play karaoke in your laptop browser.
 
-- **YouTube music volume:** adjust in the browser or Windows volume mixer. The Rust process intentionally does not capture system audio.
-- **Microphone volume:** `gain` from 0.0 to 3.0 (gain over 1.0 can clip).
-- **Network jitter:** `--buffer-ms 40` is the default, adjustable 20–100. Smaller buffers reduce delay but make Wi-Fi more glitch-prone.
-- **Speakers:** Windows default WASAPI shared output. The app outputs the same mono mic signal to every channel.
+While the receiver is running, the connection mode and buffer are locked until you stop it. Gain remains live.
 
-### Limitations
+## Optional CLI
 
-- **Latency cannot be zero.** Android AudioRecord, network/USB transport, jitter buffering and Windows output all add delay. Start with USB and a 20–40 ms jitter buffer if feedback or echo is bothersome.
-- **No microphone feedback cancellation.** Keep the phone away from the speakers and use modest volumes. Feedback at high volume can be unpleasant and potentially harmful to hearing.
-- **Foreground only:** leaving the Android app intentionally stops recording. Keep the app onscreen during singing.
-- **Trusted networks only:** Wi-Fi audio and the six-digit PIN travel as **unencrypted TCP**. Never expose port 8765 to the internet or use this on untrusted/shared Wi-Fi; use USB there.
-- **One microphone at a time** in this MVP. PCM16 mono at 48kHz uses roughly **96 KB/s** of network payload. A fallback uses 44.1kHz.
-- **Windows-only receiver** at this time. Linux runs pure Rust unit tests but no output device is accessed in CI.
-- The project has not been measured on your particular laptop or phone. Do not assume any specific RAM or end-to-end latency figure until you benchmark it locally.
+The original terminal interface is retained separately as **pocket-karaoke-cli.exe**:
 
-## Architecture
+~~~powershell
+.\pocket-karaoke-cli.exe --lan
+.\pocket-karaoke-cli.exe --buffer-ms 60 --gain 0.8
+.\pocket-karaoke-cli.exe --help
+~~~
 
-```text
-Android app (Java AudioRecord, mono PCM16)
-           │ 20ms uncompressed PCM frames
-           ▼
-    TCP via private Wi-Fi OR ADB reverse USB
-           │ 6-digit pairing PIN, one active phone
-           ▼
-Windows pocket-karaoke.exe (native Rust)
-  → bounded 200ms queue / configurable prebuffer
-  → lightweight linear resampling to output device Hz
-  → CPAL / Windows WASAPI shared device
-           │
-           ├───────── Windows audio mixer ◄── Chrome / YouTube
-           ▼
-       3.5 mm speakers
-```
+While it runs: commands **gain 0.7**, **mute**, **unmute**, **status**, **quit**. Only run **one receiver** at a time, because GUI and CLI both use TCP port 8765.
 
-Only standard-library networking threads and a small bounded PCM queue are used on the Rust receiver. The real-time audio callback does not block on networking or allocate. The Android client is Java using the platform `AudioRecord` API and a socket; it doesn't require a WebView, Kotlin runtime, or any external runtime dependency.
+## Build from source
 
-The application does **not** download, modify, or redistribute YouTube audio; it simply relies on the user's normal browser playback.
+Rust on Windows:
 
-## Developing
-
-### Rust receiver
-
-Windows with current stable Rust:
-
-```powershell
+~~~powershell
 cargo test
-cargo build --release
-.\target\release\pocket-karaoke.exe --lan
-```
+cargo build --release --bin pocket-karaoke --bin pocket-karaoke-cli
+~~~
 
-On Linux, `cargo test` checks the bounded audio queue/resampler and authentication protocol without requiring an ALSA device.
+Android uses Java 17, Android SDK 35, Gradle 8.9:
 
-### Android app
+~~~sh
+gradle -p android assembleDebug lintDebug
+~~~
 
-Open the `android/` folder in Android Studio, or with JDK 17, Android SDK 35, and Gradle 8.9:
+GitHub Actions builds/tests both Windows binaries and the Android APK; tagged releases publish all three files. The downloadable Android APK is debug-signed for personal testing.
 
-```sh
-gradle -p android assembleDebug
-```
+## Performance design
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
+- Slint **Winit + software renderer**, with default features disabled. No Skia/FemtoVG GPU renderer or WebView.
+- The mic is streamed as PCM16 mono (~96 KB/s at 48 kHz), with no FFmpeg/transcoding.
+- Bounded audio queue; 20–100 ms configurable prebuffer; non-blocking audio callback.
+- Network accepts run in a small background thread. The UI checks mic status only every 200 ms.
+- YouTube music plays independently in the browser and is mixed by the existing Windows audio system.
 
-GitHub Actions compiles/tests both platforms and attaches Windows EXE + Android APK to versioned GitHub releases.
+**Runtime RAM has not been benchmarked on your laptop**. The design is meant to minimize overhead, but binary file size is not a reliable measurement of memory usage.
+
+## Safety and limitations
+
+- **Wi-Fi audio and the pairing PIN are sent without encryption.** Use trusted private networks only; never expose port 8765 to the public internet. USB is preferable on unknown networks.
+- Keep the phone away from speakers and begin at low volume to avoid loud acoustic feedback.
+- Latency includes Android capture, transport, buffering, and Windows output; USB tends to be steadier but does not guarantee imperceptible delay.
+- Android stops recording when you leave the foreground; keep its app open.
+- Supports one streaming phone at a time. No recording/uploading to a server, no accounts.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+App source: [MIT](LICENSE). The [Slint UI toolkit](https://slint.dev) is used under its [royalty-free desktop license](https://slint.dev/agreements/slint-royalty-free-license.pdf), with the Slint attribution above and the AboutSlint component displayed in the desktop UI. Dependencies have their own licenses.

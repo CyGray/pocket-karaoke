@@ -1,0 +1,400 @@
+import { Slider, AboutSlint } from "std-widgets.slint";
+
+component ModeTab inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    in property <bool> enabled: true;
+    callback activated();
+    height: 46px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: selected ? #77e6ad : #354258;
+    background: selected ? #193c34 : #1b2536;
+
+    Text {
+        text: root.label;
+        color: selected ? #a7ffd0 : (enabled ? #d6deec : #8592a3);
+        font-weight: selected ? 700 : 600;
+        font-size: 14px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.activated(); }
+    }
+}
+
+component ActionTile inherits Rectangle {
+    in property <string> label;
+    in property <bool> emphasized: false;
+    callback activated();
+    height: 51px;
+    border-radius: 13px;
+    background: emphasized ? #72efaa : #26344b;
+    border-width: 1px;
+    border-color: emphasized ? #72efaa : #42516a;
+    Text {
+        text: root.label;
+        color: emphasized ? #0b241c : #eff4fd;
+        font-weight: 700;
+        font-size: 15px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.activated(); }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Pocket Karaoke · Slint";
+    preferred-width: 860px;
+    preferred-height: 680px;
+    min-width: 740px;
+    min-height: 625px;
+    background: #0c1422;
+
+    in-out property <bool> wifi-mode: false;
+    in-out property <bool> listener-active: false;
+    in-out property <bool> phone-connected: false;
+    in-out property <string> pin-code: "------";
+    in-out property <string> endpoint: "127.0.0.1:8765";
+    in-out property <string> audio-device: "Windows default output";
+    in-out property <string> connection-status: "Not listening";
+    in-out property <string> connection-note: "Start the receiver to show a pairing PIN.";
+    in-out property <string> error-message: "";
+    in-out property <float> gain-value: 100;
+    in-out property <float> buffer-value: 40;
+    in-out property <string> gain-label: "100%";
+    in-out property <string> buffer-label: "40 ms";
+
+    callback toggle-listening();
+    callback gain-changed(float);
+    callback buffer-changed(float);
+    callback open-youtube();
+
+    VerticalLayout {
+        padding: 22px;
+        spacing: 15px;
+
+        HorizontalLayout {
+            height: 65px;
+            spacing: 14px;
+            Rectangle {
+                width: 52px;
+                height: 52px;
+                border-radius: 16px;
+                background: #6ee7a2;
+                Text {
+                    text: "♪";
+                    color: #0c231b;
+                    font-size: 32px;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            VerticalLayout {
+                spacing: 2px;
+                Text {
+                    text: "POCKET KARAOKE";
+                    color: #f2f7ff;
+                    font-size: 23px;
+                    font-weight: 800;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "Your phone is the mic. Your laptop is the stage.";
+                    color: #9eacc1;
+                    font-size: 12px;
+                }
+            }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+            Rectangle {
+                width: 156px;
+                height: 34px;
+                border-radius: 17px;
+                background: root.phone-connected ? #1d4937 : (root.listener-active ? #40361e : #202d40);
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 8px;
+                    Rectangle {
+                        width: 9px;
+                        height: 9px;
+                        border-radius: 5px;
+                        background: root.phone-connected ? #6ee7a2 : (root.listener-active ? #f5c971 : #78879d);
+                    }
+                    Text {
+                        text: root.phone-connected ? "MIC CONNECTED" : (root.listener-active ? "WAITING FOR MIC" : "OFFLINE");
+                        color: root.phone-connected ? #b3ffd4 : (root.listener-active ? #ffe7ad : #c1ccdc);
+                        font-size: 10px;
+                        font-weight: 800;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 15px;
+            vertical-stretch: 1;
+            Rectangle {
+                width: 360px;
+                border-radius: 19px;
+                background: #172234;
+                border-width: 1px;
+                border-color: #2d4058;
+
+                VerticalLayout {
+                    padding: 18px;
+                    spacing: 10px;
+                    Text {
+                        text: "01  /  CONNECTION";
+                        color: #74edaa;
+                        font-size: 12px;
+                        font-weight: 800;
+                        height: 19px;
+                    }
+                    Text {
+                        text: "How will your phone connect?";
+                        color: #e8f1ff;
+                        font-size: 15px;
+                        height: 28px;
+                    }
+                    HorizontalLayout {
+                        spacing: 9px;
+                        height: 46px;
+                        ModeTab {
+                            horizontal-stretch: 1;
+                            label: "USB (ADB)";
+                            selected: !root.wifi-mode;
+                            enabled: !root.listener-active;
+                            activated => { root.wifi-mode = false; root.endpoint = "127.0.0.1:8765"; }
+                        }
+                        ModeTab {
+                            horizontal-stretch: 1;
+                            label: "Wi-Fi";
+                            selected: root.wifi-mode;
+                            enabled: !root.listener-active;
+                            activated => { root.wifi-mode = true; root.endpoint = "Laptop IPv4 (ipconfig):8765"; }
+                        }
+                    }
+                    Rectangle {
+                        height: 108px;
+                        border-radius: 13px;
+                        background: #0e192a;
+                        border-width: 1px;
+                        border-color: #2b4059;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 6px;
+                            Text {
+                                text: root.wifi-mode ? "PHONE HOST" : "USB CONNECTION";
+                                color: #8da2be;
+                                font-size: 11px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: root.wifi-mode ? root.endpoint : "127.0.0.1 : 8765";
+                                color: #e5f4ff;
+                                font-size: 18px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: root.wifi-mode ? "Use the laptop's IPv4 address in your phone app." : "Run: adb reverse tcp:8765 tcp:8765";
+                                color: #9dabbd;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                    Rectangle {
+                        height: 118px;
+                        border-radius: 13px;
+                        background: #1b3b32;
+                        border-width: 1px;
+                        border-color: #337255;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 5px;
+                            Text {
+                                text: "PAIRING PIN";
+                                color: #a3d4b5;
+                                font-size: 11px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: root.pin-code;
+                                color: #dbffed;
+                                font-size: 36px;
+                                font-weight: 800;
+                                horizontal-alignment: center;
+                            }
+                            Text {
+                                text: "Enter this code in the Pocket Karaoke Android app.";
+                                color: #c0e5cf;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+                    ActionTile {
+                        label: root.listener-active ? "Stop microphone receiver" : "Start microphone receiver";
+                        emphasized: !root.listener-active;
+                        activated => { root.toggle-listening(); }
+                    }
+                    Rectangle { vertical-stretch: 1; background: transparent; }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                border-radius: 19px;
+                background: #172234;
+                border-width: 1px;
+                border-color: #2d4058;
+
+                VerticalLayout {
+                    padding: 18px;
+                    spacing: 9px;
+                    Text {
+                        text: "02  /  LIVE MIXER";
+                        color: #74edaa;
+                        font-size: 12px;
+                        font-weight: 800;
+                        height: 19px;
+                    }
+                    Text {
+                        text: "Microphone";
+                        color: #f2f8ff;
+                        font-size: 24px;
+                        font-weight: 800;
+                        height: 34px;
+                    }
+                    Text {
+                        text: root.connection-status;
+                        color: root.phone-connected ? #7aeeb3 : #c1ccdb;
+                        font-size: 13px;
+                        height: 24px;
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: #354860;
+                    }
+                    HorizontalLayout {
+                        height: 28px;
+                        Text {
+                            text: "MIC GAIN";
+                            color: #a4b5cc;
+                            font-size: 12px;
+                            font-weight: 700;
+                        }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                        Text {
+                            text: root.gain-label;
+                            color: #e2fff0;
+                            font-size: 15px;
+                            font-weight: 700;
+                        }
+                    }
+                    Slider {
+                        minimum: 0;
+                        maximum: 200;
+                        value: root.gain-value;
+                        changed value => {
+                            root.gain-value = self.value;
+                            root.gain-changed(self.value);
+                        }
+                    }
+                    Text {
+                        text: "0% (mute) to 200% (boost) · Start low to avoid feedback.";
+                        color: #8fa0b9;
+                        font-size: 11px;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        height: 28px;
+                        Text {
+                            text: "JITTER BUFFER";
+                            color: #a4b5cc;
+                            font-size: 12px;
+                            font-weight: 700;
+                        }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                        Text {
+                            text: root.buffer-label;
+                            color: #e2fff0;
+                            font-size: 15px;
+                            font-weight: 700;
+                        }
+                    }
+                    Slider {
+                        minimum: 20;
+                        maximum: 100;
+                        value: root.buffer-value;
+                        enabled: !root.listener-active;
+                        changed value => {
+                            root.buffer-value = self.value;
+                            root.buffer-changed(self.value);
+                        }
+                    }
+                    Text {
+                        text: root.listener-active ? "Stop the receiver to change the buffer." : "Lower = less delay. Higher = steadier on Wi-Fi.";
+                        color: #8fa0b9;
+                        font-size: 11px;
+                        wrap: word-wrap;
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: #354860;
+                    }
+                    Text {
+                        text: "SPEAKER OUTPUT";
+                        color: #a4b5cc;
+                        font-size: 11px;
+                        font-weight: 700;
+                    }
+                    Text {
+                        text: root.audio-device;
+                        color: #dce7f4;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                    Rectangle { vertical-stretch: 1; background: transparent; }
+                    ActionTile {
+                        label: "Open karaoke on YouTube ↗";
+                        activated => { root.open-youtube(); }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 42px;
+            border-radius: 10px;
+            background: #121e30;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 10px;
+                Text {
+                    text: root.error-message == "" ? root.connection-note : root.error-message;
+                    color: root.error-message == "" ? #a4bbcc : #ffbcaf;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                AboutSlint {
+                    width: 95px;
+                    height: 30px;
+                }
+            }
+        }
+    }
+}
