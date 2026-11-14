@@ -171,6 +171,11 @@ public final class MainActivity extends Activity {
         Socket socket = new Socket();
         String finished = "Disconnected";
         try {
+            // The permission can be revoked between pressing Connect and starting
+            // the background capture thread. Check again immediately before AudioRecord.
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                throw new SecurityException("Microphone permission was revoked.");
+            }
             // 48 kHz is preferred. Fall back to 44.1 kHz for older devices.
             int rate = 48000;
             int minBytes = AudioRecord.getMinBufferSize(
