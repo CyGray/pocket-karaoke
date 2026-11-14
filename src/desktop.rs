@@ -7,7 +7,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, StreamConfig};
 use std::error::Error;
 use std::io::{self, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -227,7 +227,7 @@ pub fn run() -> AppResult<()> {
                 let pin = pin.clone();
                 let buffer_ms = opts.buffer_ms;
                 thread::spawn(move || {
-                    if let Err(e) = handle_phone(socket, &pin, shared, connected, buffer_ms) {
+                    if let Err(e) = handle_phone(socket, &pin, shared, connected, buffer_ms, None) {
                         eprintln!("Phone connection: {e}");
                     }
                 });
@@ -325,6 +325,7 @@ fn handle_phone(
     shared: Arc<Mutex<AudioQueue>>,
     connected: Arc<AtomicBool>,
     buffer_ms: u32,
+    running: Option<Arc<AtomicBool>>,
 ) -> io::Result<()> {
     socket.set_nodelay(true)?;
     socket.set_read_timeout(Some(Duration::from_secs(5)))?;
@@ -377,14 +378,36 @@ fn handle_phone(
         queue.set_source_rate(rate, buffer_ms);
     }
     socket.write_all(b"OK\n")?;
-    socket.set_read_timeout(Some(Duration::from_secs(3)))?;
+    socket.set_read_timeout(Some(if running.is_some() {
+        Duration::from_millis(350)
+    } else {
+        Duration::from_secs(3)
+    }))?;
     println!("Phone connected: {} Hz, mono PCM16", rate);
 
     let mut input = [0u8; 4096];
     let mut pcm = Vec::with_capacity(4098);
     let mut tail = None;
     loop {
-        let bytes = socket.read(&mut input)?;
+        if running
+            .as_ref()
+            .is_some_and(|active| !active.load(Ordering::Acquire))
+        {
+            break;
+        }
+        let bytes = match socket.read(&mut input) {
+            Ok(bytes) => bytes,
+            Err(e)
+                if running.is_some()
+                    && matches!(
+                        e.kind(),
+                        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                    ) =>
+            {
+                continue
+            }
+            Err(e) => return Err(e),
+        };
         if bytes == 0 {
             break;
         }
@@ -401,4 +424,156 @@ fn handle_phone(
         }
     }
     Ok(())
+}
+
+/// A running receiver owned by the Slint UI. The output stream stays alive
+/// for the lifetime of this object, while TCP accept/capture runs off-thread.
+pub struct Receiver {
+    _stream: Stream,
+    running: Arc<AtomicBool>,
+    worker: Option<thread::JoinHandle<()>>,
+    connected: Arc<AtomicBool>,
+    gain: Arc<AtomicU32>,
+    pin: String,
+    endpoint: String,
+    device_name: String,
+}
+
+impl Receiver {
+    /// Start a receiver in USB (loopback) or Wi-Fi (LAN) mode.
+    pub fn start(lan: bool, port: u16, buffer_ms: u32, initial_gain: f32) -> AppResult<Self> {
+        if port == 0
+            || !(20..=100).contains(&buffer_ms)
+            || !initial_gain.is_finite()
+            || !(0.0..=3.0).contains(&initial_gain)
+        {
+            return Err("Invalid receiver configuration".into());
+        }
+
+        let host = cpal::default_host();
+        let device = host.default_output_device().ok_or(
+            "No default speaker output. Plug in 3.5mm speakers and select them in Windows Sound settings.",
+        )?;
+        let device_name = device.name()?;
+        let format = device.default_output_config()?;
+        let channels = format.channels() as usize;
+        let output_rate = format.sample_rate().0;
+        let queue = Arc::new(Mutex::new(AudioQueue::new(48000, output_rate, buffer_ms)));
+        let gain = Arc::new(AtomicU32::new(initial_gain.to_bits()));
+        let connected = Arc::new(AtomicBool::new(false));
+
+        // Reserve the port before starting audio, to fail fast on port conflicts.
+        let interface = if lan { "0.0.0.0" } else { "127.0.0.1" };
+        let socket = TcpListener::bind((interface, port))?;
+        socket.set_nonblocking(true)?;
+
+        let stream = open_audio_stream(
+            &device,
+            &format.sample_format(),
+            &format.config(),
+            channels,
+            &queue,
+            &gain,
+        )?;
+        stream.play()?;
+
+        let mut bytes = [0u8; 4];
+        getrandom::getrandom(&mut bytes)
+            .map_err(|e| format!("Could not generate pairing PIN: {e}"))?;
+        let pin = format!("{:06}", u32::from_le_bytes(bytes) % 1_000_000);
+        let endpoint = if lan {
+            local_lan_ipv4()
+                .map(|ip| format!("{ip}:{port}"))
+                .unwrap_or_else(|| format!("Laptop IPv4 (ipconfig):{port}"))
+        } else {
+            format!("127.0.0.1:{port}")
+        };
+
+        let running = Arc::new(AtomicBool::new(true));
+        let accept_running = running.clone();
+        let accept_connected = connected.clone();
+        let accept_queue = queue.clone();
+        let accept_pin = pin.clone();
+        let worker = thread::spawn(move || {
+            while accept_running.load(Ordering::Acquire) {
+                match socket.accept() {
+                    Ok((stream, _)) => {
+                        let shared = accept_queue.clone();
+                        let connected = accept_connected.clone();
+                        let pin = accept_pin.clone();
+                        let still_running = accept_running.clone();
+                        thread::spawn(move || {
+                            if let Err(error) = handle_phone(
+                                stream,
+                                &pin,
+                                shared,
+                                connected,
+                                buffer_ms,
+                                Some(still_running),
+                            ) {
+                                eprintln!("Phone connection: {error}");
+                            }
+                        });
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(35));
+                    }
+                    Err(e) => {
+                        eprintln!("Receiver accept: {e}");
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                }
+            }
+        });
+        Ok(Self {
+            _stream: stream,
+            running,
+            worker: Some(worker),
+            connected,
+            gain,
+            pin,
+            endpoint,
+            device_name,
+        })
+    }
+
+    pub fn connected(&self) -> bool {
+        self.connected.load(Ordering::Acquire)
+    }
+
+    pub fn set_gain(&self, gain: f32) {
+        self.gain
+            .store(gain.clamp(0.0, 3.0).to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn pin(&self) -> &str {
+        &self.pin
+    }
+
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
+    pub fn device_name(&self) -> &str {
+        &self.device_name
+    }
+}
+
+impl Drop for Receiver {
+    fn drop(&mut self) {
+        self.running.store(false, Ordering::Release);
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
+fn local_lan_ipv4() -> Option<std::net::Ipv4Addr> {
+    // UDP connect chooses a source interface but does not send a packet.
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("1.1.1.1:80").ok()?;
+    match socket.local_addr().ok()?.ip() {
+        std::net::IpAddr::V4(ip) if !ip.is_loopback() => Some(ip),
+        _ => None,
+    }
 }
