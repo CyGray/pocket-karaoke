@@ -1,0 +1,19 @@
+[package]
+name = "pocket-karaoke"
+version = "0.1.0"
+edition = "2021"
+description = "Ultra-lightweight Android microphone receiver for Windows karaoke"
+license = "MIT"
+repository = "https://github.com/CyGray/pocket-karaoke"
+rust-version = "1.82"
+
+[target.'cfg(windows)'.dependencies]
+getrandom = "0.2"
+cpal = { version = "0.16", default-features = false }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
